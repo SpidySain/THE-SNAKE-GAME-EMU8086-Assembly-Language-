@@ -5,8 +5,8 @@ A console-based snake game where the player controls a snake with arrow keys, ea
 
 
 **1. Snake Movement Control (Arrow Keys):**
-    i. Detect arrow key presses (↑, ↓, ←, →) to change snake direction.
-   ii. Snake head position updates every game tick.
+      i. Detect arrow key presses (↑, ↓, ←, →) to change snake direction.
+     ii. Snake head position updates every game tick.
    
 **2. Randomly Placed Food (Increase Length):**   
      i. Place food at random coordinates inside the game area.
