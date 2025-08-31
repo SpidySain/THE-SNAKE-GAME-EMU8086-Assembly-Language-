@@ -2,6 +2,8 @@
 A console-based snake game where the player controls a snake with arrow keys, eats food to grow longer, and avoids collisions. It just like the og snake game we used to play in nokia mobiles
 
 **Feature Details:**
+
+
 **1. Snake Movement Control (Arrow Keys)**
     i. Detect arrow key presses (↑, ↓, ←, →) to change snake direction.
    ii. Snake head position updates every game tick.
