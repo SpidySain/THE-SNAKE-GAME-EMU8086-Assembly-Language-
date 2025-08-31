@@ -3,15 +3,13 @@ include "emu8086.inc"
 JMP MENU
 
 
-; ** Snake properties **
-
+; ** Snake properties ** 
 MAX_SNAKE   equ 400           ; capacity in words (enough headroom)
-s_size      dw 3              ; runtime snake length (starts at 3)
-snake       dw MAX_SNAKE DUP(0)
+s_size  dw 3        ; initial snake size
+snake dw s_size DUP(0) ; array for snake positions, initialized with 0
 grow_flag   db 0              ; 1 = just ate; skip tail erase once
-
-
 tail    dw      ?     ; variable for snake tail position
+
 
 ; Snake movement directions (keyboard arrows, scan codes) 
 left    equ     4bh
@@ -49,7 +47,7 @@ main    db  09h,09h," |__   __| |           / ____|           | |        ", 0dh,
         db  09h,09h," | | |_ |/ _  | '_ ` _ \ / _ \ |                    ", 0dh,0ah
         db  09h,09h," | |__| | (_| | | | | | |  __/_|                    ", 0dh,0ah
         db  09h,09h,"  \_____|\__,_|_| |_| |_|\___(_)                    ", 0dh,0ah
-
+	    db  09h,09h,""
 	    db 0dh,"Welcome to The Snake Game! ", 0dh,0ah
 	    
 	    
@@ -244,12 +242,11 @@ mov y_coord, 22     ; 22 because it is the defined size of the arena
 add y_coord, 1      ;  we add 1 because this is the arena offset
 
 
+
+
 JMP GAME  
 
 
-
-
- 
 ;** ARENA 50x19 **
     
 ARENA2:
@@ -398,9 +395,13 @@ INT     10h
 
 
 ;Creating a tail for the snake
-MOV     AX, snake[s_size * 2 - 2]   ;
-
-MOV     tail, AX                    ;tail coordinates saved in ax
+; tail = snake[(s_size*2) - 2]
+mov     bx, [s_size]
+shl     bx, 1          ; bx = s_size * 2
+sub     bx, 2
+mov     ax, [snake + bx]
+mov     [tail], ax
+                   ;tail coordinates saved in ax
 
 
 CALL    move_snake  ; call the move_snake function
@@ -413,17 +414,26 @@ CALL    move_snake  ; call the move_snake function
 ;                                 #
 ;################################## 
 
-MOV     dx, tail
+; ***Hide the old tail*** (skip once if we just ate)
+; ***Hide the old tail*** (skip once if we just ate)
+mov al, [grow_flag]
+cmp al, 0
+jne skip_hide_tail      ; if grow_flag != 0, skip erasing tail
 
-MOV     ah, 02h ;Funcao para definir a posicao do cursor
-INT     10h
+    mov dx, [tail]
+    mov ah, 02h
+    int 10h
+    mov al, ' '
+    mov ah, 09h
+    mov cx, 1
+    int 10h
+    jmp after_hide_tail
 
-MOV     al, ' ' ;Escrever '' significa que estamos a esconder a cauda da snake 
-MOV     ah, 09h  
-MOV     cx, 1   ;numero de vezes que vamos escrever
-INT     10h
+skip_hide_tail:
+    mov al, 0
+    mov [grow_flag], al  ; consume the growth flag (clear it)
 
-
+after_hide_tail:
 
 
 
@@ -475,10 +485,17 @@ JMP     GAME
 move_snake proc 
   
   
-; Identificamos a posicao da cauda da snake e guardamos em di  (4)  
-MOV   di, s_size * 2 - 2 
-   
-MOV   cx, s_size-1; contador definido de acordo com o tamanho da cauda da snake  
+; We identify the position of the snake's tail and save it in di  (4)  
+; di = (s_size-1)*2
+mov   bx, [s_size]
+dec   bx
+shl   bx, 1
+mov   di, bx
+
+; cx = s_size - 1
+mov   cx, [s_size]
+dec   cx
+ 
   
   
   
@@ -720,25 +737,36 @@ MOV dl,07h
 INT 21h   
 
 
-;incrementa o score
+; increment score
 inc score
 
+; grow by 1 (cap at MAX_SNAKE to be safe)
+mov     ax, [s_size]
+cmp     ax, MAX_SNAKE
+jae     no_len_inc
+inc     ax
+mov     [s_size], ax
+mov al, 1
+mov [grow_flag], al     ; set flag
+
+; and
+mov al, 0
+mov [grow_flag], al     ; clear flag
+
+no_len_inc:
+
+; update scoreboard position (your existing code)
 MOV DL, 66
-MOV DH, 9
-
-;Funcao que define a posicao do cursor com base no registo DX
-MOV     AH, 02h  
-INT     10h
-
-
-;Funcao que escreve no ecra score
-MOV ah, score 
-CALL print_num
+MOV DH, 12
+MOV AH, 02h
+INT 10h
+mov al, [score]
+mov ah, 0        ; clear high byte
+call print_num_dec
 
 
-;geramos outra comida na arena
-CALL fruitgeneration   
-
+; place another fruit
+CALL fruitgeneration
 RET
 
 
@@ -768,9 +796,47 @@ MOV     AH, 02h
 INT     10h
 
 ;Funcao que escreve no ecra o score
-MOV ah, score 
-CALL print_num
+mov al, [score]
+mov ah, 0        ; clear high byte
+call print_num_dec
 
-INT 20h 
+
+INT 20h  
+
+
+;---------------------------------------------------
+; Print AX as unsigned decimal (0–65535)
+;---------------------------------------------------
+print_num_dec proc
+    push ax
+    push bx
+    push cx
+    push dx
+
+    xor cx, cx          ; digit counter = 0
+    mov bx, 10          ; divisor = 10
+
+next_digit:
+    xor dx, dx          ; clear high word for DIV
+    div bx              ; AX ÷ 10 ? quotient in AX, remainder in DX
+    push dx             ; save remainder (digit)
+    inc cx              ; count digit
+    cmp ax, 0
+    jne next_digit      ; repeat until AX = 0
+
+print_loop:
+    pop dx              ; get digit back
+    add dl, '0'         ; convert to ASCII
+    mov ah, 02h
+    int 21h             ; print digit
+    loop print_loop
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+print_num_dec endp
+
 
 END         
