@@ -1,842 +1,518 @@
 org 100h
-include "emu8086.inc"  
-JMP MENU
+include "emu8086.inc"
+jmp menu   
+
+snake_max_length equ 400
+size dw 3 
+snake dw size dup(0)
+grow db 0
+tail dw ?
+
+left  equ 4bh
+right equ 4dh
+up    equ 48h 
+down  equ 50h 
 
 
-; ** Snake properties ** 
-MAX_SNAKE   equ 400           ; capacity in words (enough headroom)
-s_size  dw 3        ; initial snake size
-snake dw s_size DUP(0) ; array for snake positions, initialized with 0
-grow_flag   db 0              ; 1 = just ate; skip tail erase once
-tail    dw      ?     ; variable for snake tail position
+;Initial movement direction 
+current_direction db right
 
+;arena coordinate
+x_coor equ 49
+y_coor db 0   
 
-; Snake movement directions (keyboard arrows, scan codes) 
-left    equ     4bh
-right   equ     4dh
-up      equ     48h
-down    equ     50h
-  
-; Initial movement direction
-cur_dir db      right  
-
-
-x_coord equ 49    ; X coordinate for arena right edge
-y_coord db 0      ; Y coordinate for arena bottom edge (depends on difficulty)
-
-; Fruit coordinates
-fruitx db 0
-fruity db 0               
-
-score db 0 
-  
-; Macros to print numbers
-DEFINE_PRINT_NUM
-DEFINE_PRINT_NUM_UNS
-               
-
-; GAME MESSAGES  
- 
-main    db  09h,09h," |__   __| |           / ____|           | |        ", 0dh,0ah
-        db  09h,09h,"    | |  | |__   ___  | (___  _ __   __ _| | _____  ", 0dh,0ah
-        db  09h,09h,"    | |  | '_ \ / _ \  \___ \| '_ \ / _` | |/ / _ \ ", 0dh,0ah
-        db  09h,09h,"    | |  | | | |  __/  ____) | | | | (_| |   <  __/ ", 0dh,0ah
-        db  09h,09h,"   _|_|_ |_| |_|\___| |_____/|_| |_|\__,_|_|\_\___| ", 0dh,0ah
-        db  09h,09h,"  / ____|                    | |                    ", 0dh,0ah
-        db  09h,09h," | |  __  ____ _ __ ___   ___| |                    ", 0dh,0ah
-        db  09h,09h," | | |_ |/ _  | '_ ` _ \ / _ \ |                    ", 0dh,0ah
-        db  09h,09h," | |__| | (_| | | | | | |  __/_|                    ", 0dh,0ah
-        db  09h,09h,"  \_____|\__,_|_| |_| |_|\___(_)                    ", 0dh,0ah
-	    db  09h,09h,""
-	    db 0dh,"Welcome to The Snake Game! ", 0dh,0ah
-	    
-	    
-	    db 0dh,0ah,"Rules:", 0dh,0ah	    	
-	    db 0FEh,"Press UP, DOWN, LEFT and RIGHT ARROW to move", 0dh,0ah
-	    db 0FEh,"Press ESC to exit the game!", 0dh,0ah 
-	    db 0FEh,"Eat everything on screen to earn points!!", 0dh,0ah
-	     	    
-	    db 0dh,0ah ,10h,"Arena1 (1) ",1ah," Arena size: 50x22",0dh,0ah  
-	    db 10h,"Arena2 (2) ",1ah," Arena size: 50x19",0dh,0ah
-	    db 10h,"Arena3 (3) ",1ah," Arena size: 50x16",0dh,0ah
-	    
-	    db 0Fh," Choose an arena: ", "$"
-
-
-modo_facil    db 09h,"ARENA 1 (50x22)",0dh,0ah,"$" 
-modo_medio    db 09h,"ARENA 2 (50x19)",0dh,0ah,"$"               
-modo_dificil  db 09h,"ARENA 3 (50x16)",0dh,0ah,"$" 
+;food coordinate
+foodx    db 0
+foody    db 0
+score     db 0
               
-; Arena borders & scoreboard text 
-COL1          db 0dh,0ah,0c9h,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0bbh, 09h,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,"$"
-COL2          db 0dh,0ah,0bah,09h,09h,09h,09h,09h,09h,20h,0bah,09h,0B1H,09h,09h,20h,20h,20h,20h,20h,0B1H ,"$"
-COL3          db 0dh,0ah,0c8h,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0bch, 09h,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,"$"
+main db 9,9, " |__   __| |           / ____|           | |        ",13,10  
+     db 9,9, "    | |  | |__   ___  | (___  _ __   __ _| | _____  ",13,10
+     db 9,9, "    | |  | '_ \ / _ \  \___ \| '_ \ / _` | |/ / _ \ ",13,10
+     db 9,9, "    | |  | | | |  __/  ____) | | | | (_| |   <  __/ ",13,10
+     db 9,9, "   _|_|_ |_| |_|\___| |_____/|_| |_|\__,_|_|\_\___| ",13,10
+     db 9,9,"  / ____|                    | |                    ", 13,10
+     db 9,9," | |  __  ____ _ __ ___   ___| |                    ", 13,10
+     db 9,9," | | |_ |/ _  | '_ ` _ \ / _ \ |                    ", 13,10
+     db 9,9," | |__| | (_| | | | | | |  __/_|                    ", 13,10
+     db 9,9,"  \_____|\__,_|_| |_| |_|\___(_)                    ", 13,10,10,13
+     db 9,9,""
+     db 13,"Welcome to THE SNAKE GAME!!! ",13,10
+     
+     db 13,10,"Rules:",13,10
+     db 16," Press UP, DOWN, LEFT and RIGHT ARROW to move", 13,10
+     db 16," Press ESC to exit the game!", 13,10
+     db 16," Eat everything on screen to earn points!!!", 13,10
 
-INFO1          db     "---The Snake Game---$" 
-INFO2          db 10h," *SCOREBOARD*$"
-INFO3          db 10h," Score: $"
-INFO4          db 10h,"Good luck! ",02h,"$" 
+	 db 13,10,16,"Arena1 (1) ",1ah," Arena size: 50x22",0dh,0ah  
+	 db 10h,"Arena2 (2) ",26," Arena size: 50x19",13,10
+	 db 10h,"Arena3 (3) ",26," Arena size: 50x16",13,10
+	    
+	 db 15h," Choose an arena: ", "$"
 
+	 
+big    db 9,9,"ARENA 1 (50x22)",13,10,"$"  
+medium db 9,9,"ARENA 1 (50x22)",13,10,"$" 
+small  db 9,9,"ARENA 1 (50x22)",13,10,"$" 
 
+border1          db 0dh,0ah,0c9h,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0bbh, 09h,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,"$"
+border2         db 0dh,0ah,0bah,09h,09h,09h,09h,09h,09h,20h,0bah,09h,0B1H,09h,09h,20h,20h,20h,20h,20h,0B1H ,"$"
+border3          db 0dh,0ah,0c8h,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0bch, 09h,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,"$"  
 
+info1  db  "---The Snake Game---$"
+info2  db 16," Scoreboard $"
+info3  db 16," Score: $"
+info4  db 16,"Good Luck!",2,"$"
 
+ 
 
-GAME_OVER     db 0dh,0ah,0ah,0ah,0ah,0ah,0ah,0ah,09h,09h,"  ___   __   _  _  ____     __   _  _  ____  ____ ", 0dh,0ah 
-              db 09h,09h,                                " / __) / _\ ( \/ )(  __)   /  \ / )( \(  __)(  _ \", 0dh,0ah
-              db 09h,09h,                                "( (_ \/    \/ \/ \ ) _)   (  O )\ \/ / ) _)  )   /", 0dh,0ah
-              db 09h,09h,                                " \___/\_/\_/\_)(_/(____)   \__/  \__/ (____)(__\_)", 0dh,0ah     
+gameover      db 13,10,10,10,10,10,10,10,9,9,"          ___   __   _  _  ____     __   _  _  ____  ____ ", 13,10 
+              db 9,9,                                " / __) / _\ ( \/ )(  __)   /  \ / )( \(  __)(  _ \", 13,10
+              db 9,9,                                "( (_ \/    \/ \/ \ ) _)   (  O )\ \/ / ) _)  )   /", 13,10
+              db 9,9,                                " \___/\_/\_/\_)(_/(____)   \__/  \__/ (____)(__\_)", 13,10     
            
-              db 0ah,0ah,09h,09h,09h, "Oops... Looks like you lost!", 0dh,0ah 
+              db 0ah,0ah,09h,09h,09h, "Oops... Looks like you lost! Better luck next time", 0dh,0ah 
               db 0ah,09h,09h,09h,"   Your Score: ",0dh,0ah   
               
-              db 0ah,0ah,0ah,09h,09h,"  --- Game created by: Group 5 ---","$"
+              db 0ah,0ah,0ah,09h,09h,"  --- Game created by: Group 5 ---","$" 
+              
+              
 
+;-------------------------------------------------- MENU -----------------------------------------------
+menu:
 
+lea dx,main
+mov ah,9h
+int 21h
 
-PRINT_TABLE proc
-    
-MOV DL, 57
-MOV DH, 6
+mov ah,1
+int 21h
+mov dl,al
 
-;Function that sets the cursor position based on the DX register
-MOV     AH, 02h  
-INT     10h
+mov al,3
+mov ah,0
+int 16
+;jmp area
+;-----------------------------ARENA-----------------------------------
+arena: 
+cmp dl,'1'
+je arena1
 
-;INT to write to the points table
-MOV AH, 9         
-LEA DX, INFO1
-INT 21H
+cmp dl,'2'
+je arena2
 
-;Defining coordinates for the cursor
-MOV DL, 57
-MOV DH, 9
+cmp dl,'3'
+je arena3
 
-;Function that sets the cursor position based on the DX register
-MOV     AH, 02h  
-INT     10h   
-
-MOV AH, 9         
-LEA DX, INFO2
-INT 21H  
-
-MOV DL, 57
-MOV DH, 12
-
-;
-MOV     AH, 02h  
-INT     10h   
-
-MOV AH, 9         
-LEA DX, INFO3
-INT 21H
-
-
-MOV DL, 58
-MOV DH, 15
-
-;Function that sets the cursor position based on the DX register
-MOV     AH, 02h  
-INT     10h   
-
-MOV AH, 9         
-LEA DX, INFO4
-INT 21H
-
+jne menu
 ret
 
-PRINT_TABLE endp     
-
-
-
-
-      
-MENU:
-
-
-;INT to write to screen
-MOV AH, 9         
-LEA DX, main
-INT 21H   
-
-;Read the selected option regarding difficulty
-MOV AH, 1
-INT 21H    
-
-MOV DL, AL ;Guardamos o valor do registo AL no registo DL 
-
-;To clear the screen we use the 10h interruption
-; Interruption that sets the video mode to TextMode 80x25 chars and 16 colors
-MOV AL, 03H
-MOV AH, 0
-INT 10H	
-
-JMP ARENA   
-
-
-
-
-
-ARENA:
- 
-;Compare the value stored in the DL register
-;to know which key was pressed. If it wasn't
-;any of the desired ones, the menu will be displayed again.
-  
-CMP DL, '1'
-JE ARENA1
-
-CMP Dl, '2'
-JE ARENA2
-
-CMP Dl, '3'
-JE ARENA3
-
-JNE MENU
-RET
-
-
-
-
-;** ARENA 50x22 **
-
-ARENA1: 
-
-
-;INT para escrever no ecra
-MOV AH, 9         
-LEA DX, modo_facil
-INT 21H  
-
-;Escreve a primeira borda 
-MOV AH,9
-LEA DX,COL1
-INT 21H
-
-MOV CX, 20 
-
-TABULEIRO1:
-
-;escreve a segunda coluna
-MOV AH,9
-LEA DX,COL2
-INT 21H
-
-LOOP TABULEIRO1
-
-;Escreve a ultima coluna 
-MOV AH,9
-LEA DX,COL3
-INT 21H
-
-;funcao para escrever dentro da tabela
-call PRINT_TABLE                      
-
-
-MOV CX, 1;We set 1 in the counter to know that it is 1x that will loop 
-
- 
-; Saves the y coordinate of the lower limit of this arena in the y_coord variable
-
-mov y_coord, 22     ; 22 because it is the defined size of the arena
-
-add y_coord, 1      ;  we add 1 because this is the arena offset
-
-
-
-
-JMP GAME  
-
-
-;** ARENA 50x19 **
-    
-ARENA2:
-
-MOV AH, 9         
-LEA DX, modo_medio
-INT 21H 
-                                       
-
-MOV AH,9
-LEA DX,COL1
-INT 21H
-
-MOV CX, 17
-
-TABULEIRO2:
-    
-MOV AH,9
-LEA DX,COL2
-INT 21H
-
-LOOP TABULEIRO2
-
-
-MOV AH,9
-LEA DX,COL3
-INT 21H   
-
-call PRINT_TABLE  
-
-MOV CX, 1
-
-
-;Guarda na variavel y_coord a coordenada y do limite baixo desta arena
-
-mov y_coord, 19   
-
-add y_coord, 1     
-
-
-JMP GAME 
-
-
-
-
-
-;** ARENA 50x16 **
-
-ARENA3:
-
-MOV AH, 9         
-LEA DX, modo_dificil
-INT 21H 
-
-MOV AH,9
-LEA DX,COL1
-INT 21H
-
-MOV CX, 14
-
-TABULEIRO3: 
-
-MOV AH,9
-LEA DX,COL2
-INT 21H
-
-LOOP TABULEIRO3
-
-MOV AH,9
-LEA DX,COL3
-INT 21H
-
-call PRINT_TABLE  
-
-MOV CX, 1
-
-
-;Guarda na variavel y_coord a coordenada y do limite baixo desta arena
-
-mov y_coord, 16     
-
-add y_coord, 1      
-
-
-JMP GAME
+;---------------------------ARENA 1-------------------------------
+arena1:
+
+lea dx,big
+mov ah,9
+int 21h
+
+mov ah,9
+lea dx,border1
+int 21h
+
+mov cx,20
+table1:   
+
+lea dx,border2
+mov ah,9      
+int 21h
+loop table1
+
+lea dx,border3
+mov ah,9      
+int 21h 
+
+call table
+mov cx,1
+mov y_coor,22
+add y_coor,1
+
+jmp game 
  
  
+;---------------------------ARENA 2-------------------------------         
+
+arena2:
+
+lea dx,medium
+mov ah,9
+int 21h
+
+mov ah,9
+lea dx,border1
+int 21h
+
+mov cx,17
+table2:   
+
+lea dx,border2
+mov ah,9      
+int 21h
+loop table2
+
+lea dx,border3
+mov ah,9      
+int 21h 
+
+call table
+mov cx,1
+mov y_coor,19
+add y_coor,1
+
+jmp game
 
 
+;---------------------------ARENA 3-------------------------------         
 
-;########################################################
-;#                                                      #
-;# INSTRUCTION RESPONSIBLE FOR DEFINING THE COORDINATES #
-;# WHERE WE WANT THE SNAKE'S HEAD TO BE BORN            #
-;#         (ONLY AND EXECUTED ONCE)                     #
-;#                                                      #
-;########################################################
+arena3:
 
-                                                   
-COORD:                                             
+lea dx,small
+mov ah,9
+int 21h
 
-;COORDENADAS DESEJADAS
+mov ah,9
+lea dx,border1
+int 21h
 
-MOV DH, 10
-MOV DL, 20   
+mov cx,14
+table3:   
 
-; WE DECREASE THIS INSTRUCTION SO THAT IT DOESN'T HAPPEN AGAIN
-MOV snake[0], DX  
+lea dx,border2
+mov ah,9      
+int 21h
+loop table3
 
+lea dx,border3
+mov ah,9      
+int 21h 
 
+call table
+mov cx,1
+mov y_coor,14
+add y_coor,1
 
-DEC CX 
+jmp game 
 
-call fruitgeneration     
-   
+;---COORDINATE-----
+coor:
+mov dh,10
+mov dl,20
+mov snake[0], dx
 
-
-
-
-GAME:
-
-
-;IF IT IS THE FIRST LOOP OR IN THE ASSIGNMENT OF THE HEAD COORDINATES
-;FROM THE JUMP TO COORD   
-CMP CX, 1
-JE COORD
-
-
-;DX gets the coordinates of the first position of the snake (head)
-MOV DX, snake[0]
-
-;Function that sets the cursor position based on the DX register
-MOV     AH, 02h  
-INT     10h
+dec cx
+call food 
 
 
-; Function that writes the snake's head on the screen at the cursor position.
+Game:
+cmp cx,1
+je coor
+mov dx,snake[0]
+mov ah,2
+int 10h
 
-MOV     AL, 0b1h    ; symbol used for snake's head      
-MOV     BL, 0ch     ; determines the color of the snake in this case and light red
-MOV     CX, 1       ; number of times you write the symbol
-
-MOV     AH, 09h
-INT     10h
-
-
+mov al,0b1h,
+mov bl, 0ch
+mov cx,1
+        
+mov ah,9
+int 10h
 
 ;Creating a tail for the snake
 ; tail = snake[(s_size*2) - 2]
-mov     bx, [s_size]
-shl     bx, 1          ; bx = s_size * 2
-sub     bx, 2
-mov     ax, [snake + bx]
-mov     [tail], ax
-                   ;tail coordinates saved in ax
+mov bx,[size]
+shl bx,1
+sub bx,2
+mov ax, [snake+bx]
+mov [tail],ax 
 
+call snake_move
 
-CALL    move_snake  ; call the move_snake function
+; --------------------------------------Hide the old tail (skip once if we just ate)-----------------------------
+mov al,[grow]
+cmp al,0
+jne skip_tail
 
+mov dx,[tail]
+mov ah,02h
+int 10h
+mov al,' '
+mov ah,09h
+mov cx,1
+int 10h
+jmp key_check
 
-
-;##################################
-;                                 #
-; ***Hide the old tail  ***       #
-;                                 #
-;################################## 
-
-; ***Hide the old tail*** (skip once if we just ate)
-; ***Hide the old tail*** (skip once if we just ate)
-mov al, [grow_flag]
-cmp al, 0
-jne skip_hide_tail      ; if grow_flag != 0, skip erasing tail
-
-    mov dx, [tail]
-    mov ah, 02h
-    int 10h
-    mov al, ' '
-    mov ah, 09h
-    mov cx, 1
-    int 10h
-    jmp after_hide_tail
-
-skip_hide_tail:
-    mov al, 0
-    mov [grow_flag], al  ; consume the growth flag (clear it)
-
-after_hide_tail:
-
-
-
-;Intrucao que verifica se o utilizador pressionou alguma tecla
-
-check_for_key:
-
-
-;Verificamos se o utilizador carregou em alguma tecla  
-MOV     ah, 01h
-INT     16h
-JZ      no_key ;se zero=1 executa no_key pois o utilizador nao pressionou em nenhuma tecla.
- 
- 
-;Int para receber a tecla pressionada e guarda-la em A
-MOV     ah, 00h
-INT     16h     
-
-
-;Se Clicar ESC acaba o jogo 
-CMP     al, 1bh     
-JE      GameOver   
-
-
-;Definicao da direcao da snake de acordo com a tecla pressionada que fica guardada em ah
-MOV     cur_dir, ah
-
-
-
-
-
-;Instrucao responsavel por resetar o contado
-
-no_key:  
-
-MOV CX, 0
-JMP     GAME   
-
-
-
-
-
-; *******   Funcao Movimento   ********
-
-; -> Responsavel por movimentar a snake
-; -> Criar uma nova cabeca para a snake
-
-
-move_snake proc 
-  
-  
-; We identify the position of the snake's tail and save it in di  (4)  
-; di = (s_size-1)*2
-mov   bx, [s_size]
-dec   bx
-shl   bx, 1
-mov   di, bx
-
-; cx = s_size - 1
-mov   cx, [s_size]
-dec   cx
- 
-  
-  
-  
-;Loop para atualizar as coordenadas da snake
- 
-move_array: 
-      
-MOV   ax, snake[di-2];guardamos o valor em ax da proxima posicao       snake[2]-> ultimo pedaco da cauda , snake[0]-> cabeca da snake
-                                                                        
-                                                                                                                                         
-MOV   snake[di], ax; e guardamos na posicao anterior essa posicao  
-  
-SUB   di, 2  ;subtraimos 2 para calcularmos a proxima posicao 
-  
-LOOP  move_array
-
-
-;dependendo da tecla que pressionar vai andar numa determinada direcao
-
-CMP     cur_dir, left
-  JE    move_left
-CMP     cur_dir, right
-  JE    move_right
-CMP     cur_dir, up
-  JE    move_up
-CMP     cur_dir, down
-  JE    move_down
-
-
-;quando nenhuma tecla e pressionada:
-
-JMP     stop_move 
-
-
- 
- ;          ** ESQUERDA **
- ;Movimenta a snake um pedaco a esqueda
-move_left: 
-  
-  ;Decrementar a cabeca da snake em 1 unidade (x--) 
-  
-  MOV   ax, snake[0] 
-  DEC   al
-  MOV   b.snake[0], al  
-  
-  ;Caso tenho tocado na extremidade esquerda da arena (x=0) perde
-  
-  CMP   al, 0  
-  JE    GameOver
-  JNE   stop_move         
-
-
- 
- ;          ** DIREITA **
- ;Movimenta a snake um pedaco a direita 
-move_right:   
-  
-  ;Incrementa a cabeca da snake em 1 unidade (x++)
-  
-  MOV   ax, snake[0]
-  INC   al
-  MOV   b.snake[0], al  
-  
-  ;Caso tenha tocado na extremidade direita definida como coordenada x=49 perde 
-  
-  CMP al, x_coord
-  JE    GameOver
-  JNE   stop_move  
-
-  
-  
- ;      ** PARA CIMA **
- ;Movimenta a snake um pedaco acima 
-move_up:   
-  
-  ;Decrementamos pois estamos a subir (y--)
-  MOV   ax, snake[1]
-  DEC   al
-  MOV   b.snake[1], al 
-  
-  ;Caso tenha tocado na extremidade em cima definida como y=2 perde
-  
-  CMP   al, 2 
-  JE    GameOver
-  JNE   stop_move 
- 
-  
+skip_tail:
+   mov al,0
+   mov [grow],al
    
- ;      ** PARA BAIXO **
- ;Movimenta a snake um pedaco abaixo 
-move_down:  
-  
-  ;incrementamos pois estamos a descer (y++)
-  MOV   ax, snake[1]
-  INC   al
-  MOV   b.snake[1], al
-  
-  ;Caso tenha tocado na extremidade em baixa definida na selecao da arena perde
-  
-  CMP al,y_coord
-  JE    GameOver
-  JNE   stop_move
+;after_tail_hide
 
-
-stop_move:    
-  
-  ;Enquanto a snake nao morreu vamos comparar as coordenadas
-  ;da cabeca da snake com as coordenadas da comida que foi gerada!
-  
-  MOV   ax, snake[0] 
-  
-  ;Se a cabeca da snake tiver na mesma coordenada y que da comida da jump
-  
-  CMP ah, fruity
-  JE CheckFood
-  
-RET
-    
-move_snake endp
+key_check:
+   
+   mov ah,1
+   int 16h
+   jz no_key
+   
+   mov ah,0
+   int 16h
+   cmp al,1bh
+   je gameover_screen
+   mov current_direction,ah 
+   
+no_key:
+mov cx,0
+jmp game
 
 
 
 
-;-------------------------------------------------
-;                                                 |
-;   **** Funcao que gera comida na arena ****     | 
-;_________________________________________________|
-
-fruitgeneration proc 
-
-
-; ** Numero Randomico para ser a coordenada x da fruta
-
-;get system time 
-MOV AH, 02CH
-INT 21H
-
-
-;dividir o valor obtido de DH por 3 uma vez que gera numeros entre 0 a 99
- 
-MOV AL,DL
-MOV AH,0
-
-MOV BX,3
-
-XOR DX, DX; DX=0
-
-DIV BX ; 0-99/ 3 onde o resto fica em AH (numero maximo que pode ser gerado 99/3 = 33  => compativel com todas as arenas
-
-MOV BL, x_coord   ;46  
-DEC BL  ; para quando resto for igual a 0 nao spawnar no limite da arena
-
-SUB BL, AL        ;45-resto=x da comid
-
-
-;Atribuimos esse valor como sendo coordenada x da comida
-MOV fruitx, BL
-                 
-                 
-                 
-                 
-;** Numero Randomico para ser a coordenada y da fruta  
-
-;o y estara entre 4 e 23 logo so podemos gerar esses numeros
-
-;get system time 
-MOV AH, 02CH
-INT 21H
-
-
-;dividir o valor obtido de DH por 3 uma vez que gera numeros entre 0 a 99
-MOV AL,DL
-MOV AH,0          
-          
-MOV BX,7     ;99/7 (n maximo gerado = 14 => e compativel com todas as arenas
-
-XOR DX, DX; DX=0
-
-DIV BX ; 0-99/ 10 onde o resto fica em AH  
-
-                                                                   
-MOV BL, y_coord            
-DEC BL
-
-SUB BL, AL       ;46-resto=x da comida
-
-MOV fruity, BL 
-
-
-;Definicao das coordenadas no registo
-MOV DL, fruitx
-MOV DH, fruity
-                
-                
-                                  
-;Funcao que define a posicao do cursor com base no registo DX
-MOV     AH, 02h  
-INT     10h
-
-MOV     AL, 0feh    ; simbolo usada para representar a comida      
-MOV     BL, 0ah     ; cor verde claro
-MOV     CX, 1       ; numero de vezes que escreve o simbolo
-
-MOV     AH, 09h
-INT     10h
-
-
-DEC CX
-
-ret 
-
-fruitgeneration endp
-
-
-
-
-
-;Intrucao complementar para verificar se a cabeca da snake
-;se encontra na mesma pos x que a comida
-
-CheckFood:
-
-CMP al, fruitx
-JE AtributeFood
+checkfood:
+cmp al,foodx
+je  atributeFood
 RET
 
-
-
-
-
-;Intrucao que e executada quando a cabeca da snake esta na mesma
-;pos que a comida, ou seja, a snake comeu
-
-AtributeFood:  
-
-;beep sound
-MOV ah,02
-MOV dl,07h
-INT 21h   
-
-
-; increment score
+atributeFood:
+   mov ah,02h
+   mov dl,07h
+   int 21h
+   
 inc score
 
-; grow by 1 (cap at MAX_SNAKE to be safe)
-mov     ax, [s_size]
-cmp     ax, MAX_SNAKE
-jae     no_len_inc
-inc     ax
-mov     [s_size], ax
-mov al, 1
-mov [grow_flag], al     ; set flag
+mov ax,[size]
+cmp ax,snake_max_length 
+jae no_len
+inc ax
+mov [size],ax
+mov al,0
+mov [grow],al
 
-; and
-mov al, 0
-mov [grow_flag], al     ; clear flag
+no_len:
+mov dl,66
+mov dh,12
+mov ah,02h
+int 10h
+mov al,[score]        
+mov ah,0
+call print_num 
+call food
+ret
 
-no_len_inc:
+gameover_screen:
 
-; update scoreboard position (your existing code)
-MOV DL, 66
-MOV DH, 12
-MOV AH, 02h
-INT 10h
-mov al, [score]
-mov ah, 0        ; clear high byte
-call print_num_dec
+mov al,03h
+mov ah,0
+int 10h
 
+mov ah,9
+lea dx, gameover 
+int 21h
 
-; place another fruit
-CALL fruitgeneration
-RET
+mov dl,43
+mov dh,15
+mov ah,02h
+int 10h
 
+mov al,[score]
+mov ah,0
+call print_num
+int 20h
 
-
-
-
-;Intrucao que apresenta a mensagem de GameOver
-;Ocorre quando o jogador perder ou clicar ESC
-
-GameOver:
-
-;CLEAR SCREEN
-MOV AL, 03H
-MOV AH, 0
-INT 10H	
-  
-MOV AH,9    
-LEA DX,GAME_OVER
-INT 21H 
-
-;coordenadas para apresentar o score
-MOV DL, 43
-MOV DH, 15
-
-;Funcao que define a posicao do cursor com base no registo DX
-MOV     AH, 02h  
-INT     10h
-
-;Funcao que escreve no ecra o score
-mov al, [score]
-mov ah, 0        ; clear high byte
-call print_num_dec
-
-
-INT 20h  
-
-
-;---------------------------------------------------
-; Print AX as unsigned decimal (0–65535)
-;---------------------------------------------------
-print_num_dec proc
+print_num proc
     push ax
     push bx
     push cx
     push dx
-
-    xor cx, cx          ; digit counter = 0
-    mov bx, 10          ; divisor = 10
-
-next_digit:
-    xor dx, dx          ; clear high word for DIV
-    div bx              ; AX ÷ 10 ? quotient in AX, remainder in DX
-    push dx             ; save remainder (digit)
-    inc cx              ; count digit
-    cmp ax, 0
-    jne next_digit      ; repeat until AX = 0
-
-print_loop:
-    pop dx              ; get digit back
-    add dl, '0'         ; convert to ASCII
-    mov ah, 02h
-    int 21h             ; print digit
-    loop print_loop
-
+    
+    mov cx,0
+    mov bx,10
+    next_digit:
+      mov dx,0
+      div bx
+      push dx
+      inc cx
+      cmp ax,0
+      jne next_digit 
+      
+    print_loop:
+      pop dx
+      add dl,30h
+      mov ah,02h
+      int 21h
+      loop print_loop
+      
     pop dx
     pop cx
     pop bx
     pop ax
     ret
-print_num_dec endp
+print_num endp
+
+food proc
+    
+    mov ah,02Ch
+    int 21h
+    
+    mov al,dl
+    mov ah,0
+    mov bx,3
+    mov dx,0
+    
+    div bx
+    mov bl,x_coor
+    dec bl
+    sub bl,al
+    
+    mov foodx,bl
+    
+    mov ah,02ch
+    int 21h
+    mov al,dl
+    mov ah,0
+    mov bx,7
+    mov dx,0
+    div bx
+    
+    mov bl,y_coor
+    dec bl
+    sub bl,al
+    mov foody,bl
+    
+    mov dl,foodx
+    mov dh,foody
+    
+    mov ah,02h
+    int 10h
+    
+    mov al,0feh
+    mov bl,10
+    mov cx,1
+    mov ah,9
+    int 10h
+    
+    dec cx
+    ret
+food endp
 
 
-END         
+table proc 
+    ;1st info
+    mov dl,57
+    mov dh,6       
+    mov ah,2
+    int 10h    
+    lea dx,info1
+    mov ah,9
+    int 21h
+    ;2nd
+    mov dl,57
+    mov dh,9 
+    mov ah,2
+    int 10h
+    lea dx,info2
+    mov ah,9
+    int 21h 
+    ;3rd
+    mov dl,57
+    mov dh,12 
+    mov ah,2
+    int 10h
+    lea dx,info3
+    mov ah,9
+    int 21h   
+    ;4th
+    mov dl,58
+    mov dh,15 
+    mov ah,2
+    int 10h
+    lea dx,info4
+    mov ah,9
+    int 21h 
+    ret
+table endp 
+
+snake_move proc
+    mov bx,[size]
+    dec bx
+    shl bx,1
+    mov di,bx
+    
+    mov cx,[size]
+    dec cx
+    
+    move_array:
+    mov ax,snake[di-2]
+    mov snake[di],ax
+    sub di,2
+    loop move_array
+    
+    cmp  current_direction,left
+    je move_left
+    
+    cmp current_direction,right
+    je move_right
+
+    cmp  current_direction,up
+    je move_up
+    
+    cmp current_direction,down
+    je move_down
+    
+    
+    jmp stop_move
+    
+    move_left:
+      mov ax,snake[0]
+      dec al
+      mov b.snake[0],al
+      
+      cmp al,0
+      je gameover_screen
+      jne stop_move
+                    
+                    
+    move_right:
+      mov ax,snake[0]
+      inc al
+      mov b.snake[0],al
+      
+      cmp al,x_coor
+      je gameover_screen
+      jne stop_move 
+      
+    move_up:
+      mov ax,snake[1]
+      dec al
+      mov b.snake[1],al
+      
+      cmp al,2
+      je gameover_screen
+      jne stop_move
+      
+      
+    move_down:
+      mov ax,snake[1]
+      inc al
+      mov b.snake[1],al
+      
+      cmp al,y_coor
+      je gameover_screen
+      jne stop_move  
+      
+      
+    stop_move:
+      mov ax,snake[0]
+      cmp ah,foody
+      je checkfood
+      ret
+snake_move endp
+                   
+
+END
