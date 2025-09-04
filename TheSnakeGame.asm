@@ -470,81 +470,107 @@ table proc
 table endp 
 
 snake_move proc
-    mov bx,[size]
+    mov bx, [size]
     dec bx
     add bx, bx
-    mov di,bx
-    
-    mov cx,[size]
+    mov di, bx
+
+    mov cx, [size]
     dec cx
     
-    move_array:
-    mov ax,snake[di-2]
-    mov snake[di],ax
-    sub di,2
+move_array:
+    mov ax, snake[di - 2]
+    mov snake[di], ax
+    sub di, 2
     loop move_array
-    
-    mov al, [current_direction]
-    cmp  al,[left]
-    je move_left
-    
-    cmp al,[right]
-    je move_right
 
-    cmp  al,[up]
+    mov al, [current_direction]
+    cmp al, [left]
+    je move_left
+
+    cmp al, [right]
+    je move_right
+    cmp al, [up]
     je move_up
-    
+
     cmp al, [down]
     je move_down
-    
-    
-    jmp stop_move
-    
-    move_left:
-        mov dx, [snake]
-        dec dl
-        cmp dl, 0
-        je gameover_screen ;-------- ------------------------
-        mov [snake], dx
-        jmp stop_move
-                        
-                        
-    move_right:
-        mov dx, [snake]
-        inc dl
-        cmp dl, x_coor
-        jge gameover_screen
-        mov [snake], dx
-        jmp stop_move 
-      
-    move_up:
-        mov dx, [snake]
-        dec dh
-        cmp dh, 3           ; use your top-border value
-        jl gameover_screen
-        mov [snake], dx
-        jmp stop_move
-          
-      
-    move_down:
 
-        mov dx, [snake]
-        inc dh
-        mov al, [y_coor]      ; last valid Y
-        cmp dh, al
-        ja gameover_screen    ; if dh > last row ? game over
-        mov [snake], dx
-        jmp stop_move
+    jmp after_move
 
-     
-      
-      
-    stop_move:
-      mov ax,snake[0]
-      cmp ah,foody
-      je checkfood
-      ret
+move_left:
+    mov dx, [snake]
+    dec dl
+    cmp dl, 0
+    je gameover_screen
+    mov [snake], dx
+    jmp after_move
+
+move_right:
+    mov dx, [snake]
+    inc dl
+    cmp dl, x_coor
+    jge gameover_screen
+    mov [snake], dx
+    jmp after_move
+
+move_up:
+    mov dx, [snake]
+    dec dh
+    cmp dh, 3           ; top border value
+    jl gameover_screen
+    mov [snake], dx
+    jmp after_move
+
+move_down:
+    mov dx, [snake]
+    inc dh
+    mov al, [y_coor]
+    cmp dh, al
+    ja gameover_screen
+    mov [snake], dx
+    jmp after_move
+
+after_move:
+    mov ax, [size]
+    cmp ax, 4
+    jl after_collision_check  ; skip self-collision check if snake too short
+
+    mov ax, snake[0]          ; head position
+    mov cx, [size]
+    dec cx                    ; number of body segments to check
+    
+    mov bx, 2                 ; start offset at second segment
+
+check_loop:
+    cmp cx, 0
+    je after_collision_check
+
+    mov dx, snake[bx]         ; current segment position
+    cmp ax, dx
+    je gameover_screen        ; collision detected
+
+    add bx, 2                 ; advance to next segment (word size)
+    dec cx
+    jmp check_loop
+
+after_collision_check:
+    ; Check if snake head is on food
+    mov ax, snake[0]
+    cmp ah, foody
+    jne no_food
+
+    cmp al, foodx
+    jne no_food
+
+    ; Snake ate the food
+    call atributeFood
+
+no_food:
+    ret
 snake_move endp
+
+
                    
 
 END
