@@ -2,23 +2,23 @@ org 100h
 include "emu8086.inc"
 jmp menu   
 
-snake_max_length equ 400
+snake_max_length dw 400
 size dw 3 
-snake dw size dup(0)
+snake dw snake_max_length dup(0)
 grow db 0
 tail dw ?
 
-left  equ 4bh
-right equ 4dh
-up    equ 48h 
-down  equ 50h 
+left  db 4bh
+right db 4dh
+up    db 48h 
+down  db 50h 
 
 
 ;Initial movement direction 
-current_direction db right
+current_direction db 0
 
 ;arena coordinate
-x_coor equ 49
+x_coor db 49
 y_coor db 0   
 
 ;food coordinate
@@ -52,8 +52,8 @@ main db 9,9, " |__   __| |           / ____|           | |        ",13,10
 
 	 
 big    db 9,9,"ARENA 1 (50x22)",13,10,"$"  
-medium db 9,9,"ARENA 1 (50x22)",13,10,"$" 
-small  db 9,9,"ARENA 1 (50x22)",13,10,"$" 
+medium db 9,9,"ARENA 2 (50x19)",13,10,"$" 
+small  db 9,9,"ARENA 3 (50x16)",13,10,"$" 
 
 border1          db 0dh,0ah,0c9h,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0bbh, 09h,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,0B1H,"$"
 border2         db 0dh,0ah,0bah,09h,09h,09h,09h,09h,09h,20h,0bah,09h,0B1H,09h,09h,20h,20h,20h,20h,20h,0B1H ,"$"
@@ -66,7 +66,7 @@ info4  db 16,"Good Luck!",2,"$"
 
  
 
-gameover      db 13,10,10,10,10,10,10,10,9,9,"          ___   __   _  _  ____     __   _  _  ____  ____ ", 13,10 
+gameover              db 13,10,10,10,10,10,10,10,9,9,"  ___   __   _  _  ____     __   _  _  ____  ____ ", 13,10 
               db 9,9,                                " / __) / _\ ( \/ )(  __)   /  \ / )( \(  __)(  _ \", 13,10
               db 9,9,                                "( (_ \/    \/ \/ \ ) _)   (  O )\ \/ / ) _)  )   /", 13,10
               db 9,9,                                " \___/\_/\_/\_)(_/(____)   \__/  \__/ (____)(__\_)", 13,10     
@@ -132,8 +132,11 @@ int 21h
 
 call table
 mov cx,1
-mov y_coor,22
-add y_coor,1
+;mov y_coor,22
+;add y_coor,1 
+mov byte ptr [y_coor],22
+
+
 
 jmp game 
  
@@ -164,8 +167,10 @@ int 21h
 
 call table
 mov cx,1
-mov y_coor,19
-add y_coor,1
+;mov y_coor,19
+;add y_coor,1 
+mov byte ptr [y_coor],19
+
 
 jmp game
 
@@ -196,8 +201,10 @@ int 21h
 
 call table
 mov cx,1
-mov y_coor,14
-add y_coor,1
+;mov y_coor,14
+;add y_coor,1 
+mov byte ptr [y_coor],16
+
 
 jmp game 
 
@@ -218,7 +225,7 @@ mov dx,snake[0]
 mov ah,2
 int 10h
 
-mov al,0b1h,
+mov al,0b1h
 mov bl, 0ch
 mov cx,1
         
@@ -227,31 +234,39 @@ int 10h
 
 ;Creating a tail for the snake
 ; tail = snake[(s_size*2) - 2]
-mov bx,[size]
-shl bx,1
-sub bx,2
-mov ax, [snake+bx]
-mov [tail],ax 
-
+;Creating a tail for the snake
+; ---- Move first ----
 call snake_move
+
+; ---- Now compute tail index ----
+mov bx,[size]
+dec bx                 ; use (size-1) always, old size tail
+add bx, bx 
+sub bx,2
+mov ax,[snake+bx]
+mov [tail],ax
+
 
 ; --------------------------------------Hide the old tail (skip once if we just ate)-----------------------------
 mov al,[grow]
 cmp al,0
-jne skip_tail
+jne reduce_grow   ; if grow > 0, skip tail erase once
 
+; erase tail
 mov dx,[tail]
 mov ah,02h
 int 10h
-mov al,' '
-mov ah,09h
+mov al,' ' 
+mov bl,07h
 mov cx,1
+mov ah,09h
 int 10h
 jmp key_check
 
-skip_tail:
-   mov al,0
-   mov [grow],al
+
+reduce_grow:
+dec byte ptr [grow]   ; decrease grow counter
+
    
 ;after_tail_hide
 
@@ -259,13 +274,13 @@ key_check:
    
    mov ah,1
    int 16h
-   jz no_key
+   je no_key
    
    mov ah,0
    int 16h
    cmp al,1bh
    je gameover_screen
-   mov current_direction,ah 
+   mov [current_direction],ah 
    
 no_key:
 mov cx,0
@@ -288,11 +303,11 @@ inc score
 
 mov ax,[size]
 cmp ax,snake_max_length 
-jae no_len
+jge no_len
 inc ax
 mov [size],ax
-mov al,0
-mov [grow],al
+mov byte ptr [grow], 1   ; <-- grow exactly 1 block
+
 
 no_len:
 mov dl,66
@@ -304,7 +319,22 @@ mov ah,0
 call print_num 
 call food
 ret
+;----------------------
+    ; Debug print Y
+    mov ah, 2
+    mov dl, dh
+    add dl, '0'
+    int 21h
 
+    ; Debug print separator
+    mov dl, ' '
+    int 21h
+
+    ; Debug print y_coor
+    mov dl, [y_coor]
+    add dl, '0'
+    int 21h
+;---------------------
 gameover_screen:
 
 mov al,03h
@@ -367,7 +397,7 @@ food proc
     
     div bx
     mov bl,x_coor
-    dec bl
+    sub bl,2
     sub bl,al
     
     mov foodx,bl
@@ -381,7 +411,7 @@ food proc
     div bx
     
     mov bl,y_coor
-    dec bl
+    sub bl,2
     sub bl,al
     mov foody,bl
     
@@ -400,6 +430,7 @@ food proc
     dec cx
     ret
 food endp
+
 
 
 table proc 
@@ -441,7 +472,7 @@ table endp
 snake_move proc
     mov bx,[size]
     dec bx
-    shl bx,1
+    add bx, bx
     mov di,bx
     
     mov cx,[size]
@@ -453,58 +484,59 @@ snake_move proc
     sub di,2
     loop move_array
     
-    cmp  current_direction,left
+    mov al, [current_direction]
+    cmp  al,[left]
     je move_left
     
-    cmp current_direction,right
+    cmp al,[right]
     je move_right
 
-    cmp  current_direction,up
+    cmp  al,[up]
     je move_up
     
-    cmp current_direction,down
+    cmp al, [down]
     je move_down
     
     
     jmp stop_move
     
     move_left:
-      mov ax,snake[0]
-      dec al
-      mov b.snake[0],al
-      
-      cmp al,0
-      je gameover_screen
-      jne stop_move
-                    
-                    
+        mov dx, [snake]
+        dec dl
+        cmp dl, 0
+        je gameover_screen ;-------- ------------------------
+        mov [snake], dx
+        jmp stop_move
+                        
+                        
     move_right:
-      mov ax,snake[0]
-      inc al
-      mov b.snake[0],al
-      
-      cmp al,x_coor
-      je gameover_screen
-      jne stop_move 
+        mov dx, [snake]
+        inc dl
+        cmp dl, x_coor
+        jge gameover_screen
+        mov [snake], dx
+        jmp stop_move 
       
     move_up:
-      mov ax,snake[1]
-      dec al
-      mov b.snake[1],al
-      
-      cmp al,2
-      je gameover_screen
-      jne stop_move
-      
+        mov dx, [snake]
+        dec dh
+        cmp dh, 3           ; use your top-border value
+        jl gameover_screen
+        mov [snake], dx
+        jmp stop_move
+          
       
     move_down:
-      mov ax,snake[1]
-      inc al
-      mov b.snake[1],al
-      
-      cmp al,y_coor
-      je gameover_screen
-      jne stop_move  
+
+        mov dx, [snake]
+        inc dh
+        mov al, [y_coor]      ; last valid Y
+        cmp dh, al
+        ja gameover_screen    ; if dh > last row ? game over
+        mov [snake], dx
+        jmp stop_move
+
+     
       
       
     stop_move:
